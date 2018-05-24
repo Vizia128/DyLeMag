@@ -22,18 +22,27 @@ int testVelocity[100] = {0};
 int testPosition[100] = {0};
 
 int count = 0;
+unsigned long long int testCount[2] = {0};
 
 unsigned int oFieldTemp = 0;
 unsigned int oField = 0;
 unsigned int iField = 0;
 float position[2] = {0};
 float velocity[2] = {0};
+float acceleration[2] = {0};
 int iDestination = 0;
-int oDestination = ADC_SAMPLE_SIZE * 265;
+int oDestination = 260;
 
-float kp = ADC_SAMPLE_SIZE * 9;
+//
+float iFieldAdj = HALF_DUTY * iPos_to_iField; // 50%
+float oxi[2] = {0};
+float mass = 0;
+float grav = 0;
+int destinationField = 600;
+//
+float kp = .01;
 //const int ki = 0;
-float kd = ADC_SAMPLE_SIZE * 9;
+float kd = 0;
 
 void adc_Setup();
 void ADC_Sample();
@@ -55,46 +64,37 @@ int main(){
     PWM_Setup();
     TA0CCR1 = 400;
     int j = 0;
-    for(bool t = 0;;t = !t){
-        position[t] = 0;
-        oField = 0;
-        ADC_Sample();
-        for(int i = 0; i < ADC_SAMPLE_SIZE; i++){
-            iField = TA0CCR1 * iPos_to_iFieldNum / 800;
-            oFieldTemp = adc[i] - iField;
-//            oField += oFieldTemp;
-            position[t] += invsqrtfloat[oFieldTemp];
+
+    for(bool t = 0;;){
+        if(count > 0){
+            count = 0;
+            t = !t;
+            position[t] = 0;
+            oField = 0;
+            ADC_Sample();
+            for(int i = 0; i < ADC_SAMPLE_SIZE; i++){
+                iField += (TA0CCR1 * iPos_to_iFieldNum / 800 - iField) * 0.052235;
+                oFieldTemp = adc[i] - iField;
+    //            oField += oFieldTemp;
+                position[t] += invsqrtfloat[oFieldTemp];
+            }
+            //position[t] /= ADC_SAMPLE_SIZE;
+            velocity[t] = position[t] - position[!t];
+
+            iDestination = 400 - kp * (oDestination - position[t]) + kd * velocity[t];
+            if(iDestination > PERIOD) { iDestination = PERIOD; }
+            else if(iDestination < 0) { iDestination = 0; }
+            TA0CCR1 = iDestination;
+
+
         }
-
-        velocity[t] = position[t] - position[!t];
-
-//        testPosition[j] = position[t];
-//        testVelocity[j] = velocity[t];
-//        j++;
-//        if(j >= 100){
-//            j = 0;
-//        }
-        iDestination = HALF_DUTY - kp * (oDestination - position[t]) + kd * velocity[t];
-        if(iDestination > PERIOD) { iDestination = PERIOD; }
-        else if(iDestination < 0) { iDestination = 0; }
-        TA0CCR1 = iDestination;
-        /*
-                          acceleration[i] = velocity[i] - velocity[!i];     //  (-60234><60234) = (-30127><30127) - (-30127><30127)
-                          oxi[i] = iField * oField / 32;                         //  (0><1048576) = (0><1024) * (0><1024)
-                          mass = (oxi[i] - oxi[!i]) / (acceleration[i] - acceleration[!i]);
-                          //grav = oxi[i] / mass - acceleration[i];
-                          //destination = mass * grav / iField_adj
-                          destinationField += ((oxi[i] - mass * acceleration[i]) / iFieldAdj - destinationField) * 3 / 11;
-                          destination = invsqrt4[destinationField];
-*/
     }
 
 }
 
 #pragma vector=TIMER1_A0_VECTOR     // Timer1 A0 interrupt service routine
 __interrupt void Timer1_A0 (void) {
-
-    timeToStart = 1;
+    testCount[0]++;
     count++;
 }
 
@@ -120,7 +120,7 @@ void PWM_Setup(){
     TA0CTL |= TASSEL_2 + MC_1;      // SMCLK, Up Mode (Counts to TA0CCR0)
 
         /*** Timer1_A Set-Up ***/
-    TA1CCR0 |= 16000000;                    // Counter value
+    TA1CCR0 |= 16000;                    // Counter value
     TA1CCTL0 |= CCIE;               // Enable Timer1_A interrupts
     TA1CTL |= TASSEL_2 + MC_1 + ID_0;      // SMCLK, Up Mode (Counts to TA1CCR0)
 
